@@ -1,0 +1,8 @@
+{
+  "firestore": [
+    {
+      "database": "branch-info",
+      "rules": "branch-info.firestore.rules"
+    }
+  ]
+}

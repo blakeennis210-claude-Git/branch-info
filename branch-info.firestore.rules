@@ -1,0 +1,30 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- EDIT THESE TWO THINGS ------------------------------------------
+    // Provider ID exactly as shown in Firebase console > Authentication > Sign-in method.
+    function oktaProviderId() { return 'saml.okta'; }
+    // Lowercase email addresses allowed to view branch data. Redeploy rules after changing.
+    function allowedEmails() { return ['REPLACE-WITH-ALLOWED-EMAIL@example.com']; }
+    // ----------------------------------------------------------------------
+
+    // Must be signed in through the Okta provider (not email/password, Google, etc. that
+    // other apps in this Firebase project might enable) AND be on the allowlist.
+    function isAllowed() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider == oktaProviderId()
+        && 'email' in request.auth.token
+        && request.auth.token.email.lower() in allowedEmails();
+    }
+
+    match /branches/{siteId} {
+      allow read: if isAllowed();
+      allow write: if false;   // data is loaded with the Admin SDK (scripts/import.mjs)
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

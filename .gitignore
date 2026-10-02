@@ -1,0 +1,7 @@
+# Real branch data: never commit to a public repo.
+data/
+node_modules/
+*.xlsx
+serviceAccount*.json
+.firebase/
+firebase-debug.log
