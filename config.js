@@ -3,10 +3,10 @@
 window.APP_CONFIG = {
   // Firebase console > Project settings > Your apps > SDK setup and configuration
   firebase: {
-    apiKey: "REPLACE_ME",
+    apiKey: "AIzaSyBbhBhuY1U57TN6qbIKVC378SitNepTe4M",
     authDomain: "wildcats-tracker.firebaseapp.com",
     projectId: "wildcats-tracker",
-    appId: "REPLACE_ME",
+    appId: "1:663776602342:web:5e976306adb4512486b327",
   },
   // The named Firestore database that holds the branch data (NOT "(default)").
   databaseId: "branch-info",
