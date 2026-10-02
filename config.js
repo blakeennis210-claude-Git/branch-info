@@ -12,5 +12,5 @@ window.APP_CONFIG = {
   databaseId: "branch-info",
   // Provider ID shown in Firebase console > Authentication > Sign-in method after your
   // Okta team adds the provider. Must start with "saml." or "oidc.".
-  providerId: "saml.okta",
+  providerId: "oidc.ccb-okta",
 };
