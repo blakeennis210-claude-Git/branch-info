@@ -1,50 +1,116 @@
 # Cornerstone CCB Branch ISP Info
 
-Static page (GitHub Pages) that signs in with Okta through Firebase Authentication and reads
-branch data from a **separate named Firestore database** (`branch-info`) in the existing
-`wildcats-tracker` project. The data is not in the page. The server refuses to send it unless the
-visitor signed in through the Okta provider **and** their email is on the allowlist in the rules.
+A private-by-login page that shows each branch's contact info and its primary and secondary ISP.
+Only people on an approved email list can see the data, and only after logging in with Okta.
 
-## What is and isn't verified
+**How it fits together (one sentence):** this repo is just the page; the branch data lives in a
+brand-new Firebase database that refuses to hand it over unless you logged in with Okta *and* your
+email is on the list.
 
-Verified against docs: named databases and per-database rules/deploy, SAML/OIDC providers need the
-Identity Platform upgrade, SAML provider IDs start with `saml.`, the SAML email only reaches the
-token if the IdP sends it in `NameID`, the web SDK calls used here.
-Tested here: page behavior in a browser (search, filters, closed toggle, hostile cell content).
-**Not tested here:** the Firestore rules (emulator download is blocked in this workspace), the
-Okta login itself, and the deploy. Docs do not list what `firebase.sign_in_provider` equals for
-SAML/OIDC. The rules assume it equals the provider ID. If an allowlisted user sees "Access denied",
-the screen shows the provider value the token actually carries; put that value in the rules.
-Rules fail closed, so a wrong guess blocks people, it does not let anyone in.
+Nothing here touches your Wildcats app's data or its website.
 
-## Setup
+---
 
-1. **Create the database** (named databases can't be created in the console):
-   `firebase firestore:databases:create branch-info --location=<region> --project wildcats-tracker`
-2. **Okta / Auth** (your Okta team): upgrade the project to Firebase Authentication with Identity
-   Platform, add a SAML or OIDC provider, and give it to Firebase. SAML: the Okta app must send the
-   user's email as `NameID`. Note the provider ID (`saml.xxx` / `oidc.xxx`). This is project-wide, so
-   it also shows up as a sign-in option in the Wildcats app's project.
-3. **Edit**: `config.js` (Firebase web config, `providerId`),
-   `branch-info.firestore.rules` (`oktaProviderId()` and `allowedEmails()`, lowercase emails).
-4. **GitHub Pages**: repo Settings > Pages > Deploy from a branch > `main` / `(root)`. Then add the Pages
-   domain (`<owner>.github.io`) under Firebase console > Authentication > Settings > Authorized domains.
-5. **Deploy the rules** (from this folder): `firebase deploy --only firestore:branch-info`
-6. **Load the data**: `npm install`, `gcloud auth application-default login`, then
-   `node scripts/import.mjs --project wildcats-tracker --database branch-info`
-   (refuses to write to `(default)`; replaces the whole `branches` collection each run).
+## Setup: 6 steps, in this order
 
-To refresh from a new spreadsheet: `python3 scripts/convert.py Site_Tracking_List.xlsx`, then step 6.
-To change who can view: edit `allowedEmails()` and redeploy the rules (step 5, first command).
-After editing `src/*.js`: `npx esbuild src/main.js --bundle --minify --format=iife --target=es2020 --outfile=app.js`
+Tick them off as you go. Each step says who does it and how you know it worked.
 
-## Notes
+### Step 1: Turn the website on (you, 1 minute)
+1. At the top of this repo click **Settings**.
+2. In the left menu click **Pages**.
+3. Under **Branch** pick **main**, leave the folder as **/ (root)**, click **Save**.
+4. Wait about a minute and refresh the page. A box at the top shows **your site's link**.
 
-- `data/` holds the real branch data and is gitignored. Don't commit it to a public repo.
-- Rules only govern the web page. Anyone with IAM access to the Google Cloud project can still read
-  the database from the console or Admin SDK, so check who has access.
-- Sign-in uses session persistence: closing the tab signs out of this page (Okta may still be signed in).
-- Exported: contact, address, primary ISP and secondary ISP columns of the `Details` sheet (305 sites,
-  228 closed; closed are hidden until "Include closed sites" is ticked). Not exported: Aruba columns and
-  the other sheets. The data includes account numbers, static IPs, modem MAC/serials and MRC; trim
-  `scripts/convert.py` if that is more than viewers should see.
+**Done when:** you can see a link like `https://something.github.io/branch-info/`.
+It will say *"Not configured"* for now. That's expected.
+
+### Step 2: Ask your Okta team (you, 2 minutes: copy and send this)
+
+> Hi, I'm setting up an internal page that uses Firebase Authentication with Okta.
+> Please:
+> 1. Upgrade the Firebase project `wildcats-tracker` to "Firebase Authentication with Identity Platform".
+> 2. Add an Okta sign-in provider (SAML or OIDC, your choice) in Firebase: Authentication > Sign-in method.
+>    For SAML, Okta must send the user's email address as the NameID.
+> 3. Send me the **provider ID** Firebase shows for it. It looks like `saml.something` or `oidc.something`.
+>
+> Note: this is set per Firebase project, so the provider also shows up as a sign-in option for the
+> other app in that project. The branch data stays locked to Okta sign-ins on the approved list.
+
+**Done when:** you have the provider ID (write it here: ____________).
+
+### Step 3: Allow the website in Firebase (you, 2 minutes)
+1. Open the [Firebase console](https://console.firebase.google.com/) and pick the **wildcats-tracker** project.
+2. Go to **Authentication > Settings > Authorized domains**.
+3. Click **Add domain** and paste your site's domain from Step 1, **only the part before the first slash**,
+   for example `something.github.io`.
+
+**Done when:** the domain shows in the list.
+
+### Step 4: Paste your Firebase settings into this repo (you, 3 minutes)
+1. In the Firebase console click the gear icon > **Project settings**. Scroll to **Your apps**.
+   If there's no web app for this site, click the **`</>`** (web) icon and register one named `branch-info`
+   (skip the hosting option).
+2. Under **SDK setup and configuration** choose **Config**. You'll see values like `apiKey` and `appId`.
+3. Back here on GitHub open the file **config.js** and click the **pencil icon** (top right of the file).
+4. Replace each `REPLACE_ME` with the real value from Firebase.
+5. Change `providerId` to the provider ID from Step 2.
+6. Click **Commit changes** (green button).
+
+These values are not secrets. Firebase's web config is meant to be public.
+
+**Done when:** the site no longer says "Not configured" (refresh it; you should see a **Log in with Okta** button).
+
+### Step 5: Make the database (you, on your computer, 10 minutes the first time)
+*Install these once if you don't have them:* [Node.js](https://nodejs.org/), the Firebase CLI
+(`npm install -g firebase-tools`), and the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install).
+
+1. On this repo's main page click the green **Code** button > **Download ZIP**. Unzip it.
+2. Open a terminal **inside that unzipped folder** and run these one at a time:
+   ```
+   firebase login
+   firebase firestore:databases:create branch-info --location=us-central1 --project wildcats-tracker
+   ```
+   (Use the same region as your other database if you know it. `us-central1` is only an example.)
+3. Open **branch-info.firestore.rules** in a text editor **on your computer (not on GitHub)**.
+   - Replace `REPLACE-WITH-ALLOWED-EMAIL@example.com` with the email(s) allowed to view, **in lowercase**,
+     for example `['name@company.com', 'other@company.com']`.
+   - Make sure `oktaProviderId()` matches your provider ID from Step 2.
+   - Don't upload this edited file back to GitHub. That would publish the email list.
+4. Run:
+   ```
+   firebase deploy --only firestore:branch-info
+   ```
+
+**Done when:** the last command says the deploy completed.
+
+### Step 6: Load the branch data (you, on your computer, 5 minutes)
+1. Put your spreadsheet (`Site_Tracking_List.xlsx`) in the same folder.
+2. Run these one at a time:
+   ```
+   pip install openpyxl
+   python3 scripts/convert.py Site_Tracking_List.xlsx
+   npm install
+   gcloud auth application-default login
+   node scripts/import.mjs --project wildcats-tracker --database branch-info
+   ```
+
+**Done when:** it prints `wrote 305 sites`. Now open your site's link and click **Log in with Okta**.
+
+---
+
+## If something looks wrong
+
+| You see | It means | Fix |
+|---|---|---|
+| "Not configured" | `config.js` still has `REPLACE_ME` | Do Step 4 |
+| Login pop-up never opens | Browser blocked pop-ups, or the domain isn't allowed | Allow pop-ups; redo Step 3 |
+| "Access denied" with your email shown | Email isn't on the list, or the provider value differs | Check the email in Step 5. If it is right, the screen shows the provider value your login carries. Put exactly that in `oktaProviderId()` and redo `firebase deploy --only firestore:branch-info` |
+| Page loads, list is empty | Data not loaded, or the rules weren't deployed | Redo Step 5 (deploy) and Step 6 |
+
+## Changing things later
+- **Add or remove a viewer:** edit the email list in the rules file on your computer, then
+  `firebase deploy --only firestore:branch-info`.
+- **Refresh the data from a new spreadsheet:** repeat Step 6.
+
+Not yet tested: the Okta login and the Firestore rules (the author's workspace couldn't run them).
+Expect to fix small things on the first real login. Technical details are in `TECHNICAL.md`.
