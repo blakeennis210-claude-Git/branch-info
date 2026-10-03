@@ -1,7 +1,7 @@
-// Loads data/branches.json into the named Firestore database, replacing the `branches`
+// Loads data/branches.json into a Firestore database, replacing ONLY the `ccb_branch_info`
 // collection (sites removed from the spreadsheet are deleted).
 //
-//   node scripts/import.mjs --project wildcats-tracker --database branch-info
+//   node scripts/import.mjs --project wildcats-tracker 
 //
 // Auth: Application Default Credentials. Run `gcloud auth application-default login`
 // first, or set GOOGLE_APPLICATION_CREDENTIALS to a service-account key file.
@@ -15,16 +15,16 @@ const arg = (name, dflt) => {
   return i > -1 ? process.argv[i + 1] : dflt;
 };
 const project = arg("project");
-const database = arg("database", "branch-info");
+const database = arg("database", "(default)");
+const collName = arg("collection", "ccb_branch_info");
 const file = arg("file", new URL("../data/branches.json", import.meta.url).pathname);
 
 if (!project) { console.error("Missing --project <firebase-project-id>"); process.exit(1); }
-if (database === "(default)") { console.error("Refusing to write to the (default) database."); process.exit(1); }
 
 const rows = JSON.parse(readFileSync(file, "utf8"));
 const app = initializeApp({ projectId: project });
-const db = getFirestore(app, database);
-const col = db.collection("branches");
+const db = database === "(default)" ? getFirestore(app) : getFirestore(app, database);
+const col = db.collection(collName);
 
 const keep = new Set(rows.map((r) => r.id));
 const existing = await col.listDocuments();
@@ -40,4 +40,4 @@ for (let i = 0; i < ops.length; i += 400) {
   ops.slice(i, i + 400).forEach((op) => op(batch));
   await batch.commit();
 }
-console.log(`database "${database}": wrote ${rows.length} sites, deleted ${stale.length} stale`);
+console.log(`database "${database}", collection "${collName}": wrote ${rows.length} sites, deleted ${stale.length} stale`);

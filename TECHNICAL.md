@@ -32,7 +32,7 @@ Rules fail closed, so a wrong guess blocks people, it does not let anyone in.
 5. **Deploy the rules** (from this folder): `firebase deploy --only firestore:branch-info`
 6. **Load the data**: `npm install`, `gcloud auth application-default login`, then
    `node scripts/import.mjs --project wildcats-tracker --database branch-info`
-   (refuses to write to `(default)`; replaces the whole `branches` collection each run).
+   (writes only the `ccb_branch_info` collection; replaces that whole collection each run).
 
 To refresh from a new spreadsheet: `python3 scripts/convert.py Site_Tracking_List.xlsx`, then step 6.
 To change who can view: edit `allowedEmails()` and redeploy the rules (step 5, first command).

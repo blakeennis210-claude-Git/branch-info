@@ -1,3 +1,4 @@
+// MERGE these functions and the ccb_branch_info block into the project's existing default-database rules. Do NOT deploy this file on its own: it would replace the other app's rules.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -18,7 +19,7 @@ service cloud.firestore {
         && request.auth.token.email.lower() in allowedEmails();
     }
 
-    match /branches/{siteId} {
+    match /ccb_branch_info/{siteId} {
       allow read: if isAllowed();
       allow write: if false;   // data is loaded with the Admin SDK (scripts/import.mjs)
     }

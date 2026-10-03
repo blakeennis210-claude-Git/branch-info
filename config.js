@@ -9,7 +9,8 @@ window.APP_CONFIG = {
     appId: "1:663776602342:web:5e976306adb4512486b327",
   },
   // The named Firestore database that holds the branch data (NOT "(default)").
-  databaseId: "branch-info",
+  databaseId: "(default)",
+  collection: "ccb_branch_info",
   // Provider ID shown in Firebase console > Authentication > Sign-in method after your
   // Okta team adds the provider. Must start with "saml." or "oidc.".
   providerId: "oidc.ccb-okta",

@@ -22,8 +22,8 @@ if (!cfg || !cfg.firebase || String(cfg.firebase.apiKey).startsWith("REPLACE")) 
 
 const app = initializeApp(cfg.firebase);
 const auth = getAuth(app);
-// Named (non-default) database, kept separate from any other Firestore data in the project.
-const db = getFirestore(app, cfg.databaseId);
+// Uses its own collection (cfg.collection) so it cannot collide with other apps sharing this database.
+const db = cfg.databaseId && cfg.databaseId !== "(default)" ? getFirestore(app, cfg.databaseId) : getFirestore(app);
 
 function makeProvider() {
   const id = cfg.providerId || "";
@@ -33,7 +33,7 @@ function makeProvider() {
 }
 
 const toRows = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-const branches = collection(db, "branches");
+const branches = collection(db, cfg.collection || "ccb_branch_info");
 
 const ui = createUI(root, {
   onLogin: async () => {
