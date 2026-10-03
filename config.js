@@ -1,17 +1,12 @@
-// Edit these values. None of them are secrets (the Firebase web config is public by design;
-// access is enforced by Okta sign-in plus the Firestore rules, not by hiding this file).
+// Public client settings (Firebase web config is public by design; the database rules protect the data).
 window.APP_CONFIG = {
-  // Firebase console > Project settings > Your apps > SDK setup and configuration
   firebase: {
-    apiKey: "AIzaSyBbhBhuY1U57TN6qbIKVC378SitNepTe4M",
-    authDomain: "wildcats-tracker.firebaseapp.com",
-    projectId: "wildcats-tracker",
-    appId: "1:663776602342:web:5e976306adb4512486b327",
+    apiKey: "AIzaSyBj9FXPcNb_F6h_8vLHvRqi_m9OvsQ-5QI",
+    authDomain: "branch-info-7da70.firebaseapp.com",
+    projectId: "branch-info-7da70",
+    appId: "1:286378391817:web:bde21372a5786ae5d9fbd8",
   },
-  // The named Firestore database that holds the branch data (NOT "(default)").
   databaseId: "(default)",
   collection: "ccb_branch_info",
-  // Provider ID shown in Firebase console > Authentication > Sign-in method after your
-  // Okta team adds the provider. Must start with "saml." or "oidc.".
   providerId: "oidc.ccb-okta",
 };
