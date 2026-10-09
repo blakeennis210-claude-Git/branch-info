@@ -1,7 +1,7 @@
 // Loads data/branches.json into a Firestore database, replacing ONLY the `ccb_branch_info`
 // collection (sites removed from the spreadsheet are deleted).
 //
-//   node scripts/import.mjs --project wildcats-tracker 
+//   node scripts/import.mjs --project <firebase-project-id>   (add --replace to overwrite existing data) 
 //
 // Auth: Application Default Credentials. Run `gcloud auth application-default login`
 // first, or set GOOGLE_APPLICATION_CREDENTIALS to a service-account key file.
@@ -28,6 +28,14 @@ const col = db.collection(collName);
 
 const keep = new Set(rows.map((r) => r.id));
 const existing = await col.listDocuments();
+
+// Sites can now be edited and added in the web page. Re-importing the spreadsheet would overwrite those
+// edits and delete sites that are not in the spreadsheet, so it only runs on an empty collection
+// unless you pass --replace on purpose.
+if (existing.length && !process.argv.includes("--replace")) {
+  console.error(`Collection "${collName}" already has ${existing.length} documents. Importing would overwrite edits made in the web page. Re-run with --replace if that is what you want.`);
+  process.exit(1);
+}
 const stale = existing.filter((d) => !keep.has(d.id));
 
 // Firestore batches are limited to 500 operations.

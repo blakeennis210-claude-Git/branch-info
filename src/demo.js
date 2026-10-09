@@ -1,5 +1,5 @@
 // Demo page: same UI as the real site, but with made-up sample data and no login or database.
-import { createUI } from "./ui.js";
+import { createUI, slugify } from "./ui.js";
 
 const mk = (siteName, description, region, city, state, status, contact, p, s) => ({
   id: siteName.toLowerCase() + "-1", siteName, description, region, city, state, status,
@@ -32,5 +32,11 @@ const ui = createUI(root, {
   onLogin: () => { ui.app({ email: "demo@example.com" }); ui.setActive(active); },
   onLogout: () => ui.login(),
   onLoadClosed: async () => closed,
+  // Demo only: edits live in this page's memory and vanish on reload.
+  onSave: async ({ id, data, existingIds }) => {
+    let docId = id;
+    for (let n = 1; !docId; n++) if (!existingIds.includes(`${slugify(data.siteName)}-${n}`)) docId = `${slugify(data.siteName)}-${n}`;
+    return { id: docId, ...data };
+  },
 });
 ui.login();

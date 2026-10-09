@@ -9,6 +9,22 @@ email is on the list.
 
 Nothing here touches your Wildcats app's data or its website.
 
+> **Current setup (supersedes the older steps below where they differ):** the site uses its own Firebase
+> project and the project's default database, with all data in one collection, `ccb_branch_info`.
+> Rules are in `branch-info.firestore.rules` (paste into Firestore > Rules, with your provider ID and editor
+> emails filled in). Load the spreadsheet once with `node scripts/import.mjs --project <project-id>`; it
+> refuses to run on a non-empty collection unless you add `--replace`, because sites can now be edited in the page.
+
+## Using the page
+
+- **Search / filter** the list, tick "Include closed sites" to see closed ones.
+- **Add site** (top bar) and **Edit** (inside any site) open a form. Saving needs your email to be in the
+  rules' `editorEmails()` list; anyone else gets "You don't have permission". Sites can't be deleted from the page:
+  set the status to Closed instead. Each save records who edited and when.
+- **Export Excel / Export CSV** download exactly the sites currently shown (after search and filters). The export
+  contains everything shown in the page, including account numbers and IPs, so treat the file like the data itself.
+
+
 ---
 
 ## Setup: 6 steps, in this order

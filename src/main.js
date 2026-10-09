@@ -9,8 +9,8 @@ import {
   SAMLAuthProvider,
   OAuthProvider,
 } from "firebase/auth";
-import { getFirestore, collection, getDocs, query, where } from "firebase/firestore";
-import { createUI } from "./ui.js";
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, serverTimestamp, query, where } from "firebase/firestore";
+import { createUI, slugify } from "./ui.js";
 
 const cfg = window.APP_CONFIG;
 const root = document.getElementById("root");
@@ -35,7 +35,25 @@ function makeProvider() {
 const toRows = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 const branches = collection(db, cfg.collection || "ccb_branch_info");
 
+let currentEmail = "";
+
+// Save one site. New sites get an id like "main-street-1"; an id that already exists on the server is never reused.
+async function saveSite({ id, data, existingIds }) {
+  let docId = id;
+  if (!docId) {
+    const base = slugify(data.siteName);
+    for (let n = 1; !docId; n++) {
+      const cand = `${base}-${n}`;
+      if (existingIds.includes(cand)) continue;
+      if (!(await getDoc(doc(branches, cand))).exists()) docId = cand;
+    }
+  }
+  await setDoc(doc(branches, docId), { ...data, updatedBy: currentEmail, updatedAt: serverTimestamp() });
+  return { id: docId, ...data, updatedBy: currentEmail, updatedAt: { toDate: () => new Date() } };
+}
+
 const ui = createUI(root, {
+  onSave: saveSite,
   onLogin: async () => {
     try {
       await signInWithPopup(auth, makeProvider());
@@ -60,7 +78,8 @@ onAuthStateChanged(auth, async (user) => {
   ui.loading("Checking access…");
   try {
     const rows = toRows(await getDocs(query(branches, where("status", "!=", "Closed"))));
-    ui.app({ email: user.email || "" });
+    currentEmail = user.email || "";
+    ui.app({ email: currentEmail });
     ui.setActive(rows);
   } catch (e) {
     if (e.code === "permission-denied") {

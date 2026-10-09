@@ -1,29 +1,35 @@
-// MERGE these functions and the ccb_branch_info block into the project's existing default-database rules. Do NOT deploy this file on its own: it would replace the other app's rules.
+// Rules for the ccb_branch_info collection. Paste into Firestore > Rules for the project, then Publish.
+// Replace the provider ID and editor emails (lowercase) before publishing.
+// Everyone who signs in through the Okta provider can READ; only editorEmails() can add or change sites.
+// Nobody can delete from the web page.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function oktaProviderId() { return 'oidc.REPLACE-WITH-PROVIDER-ID'; }
+    function editorEmails() { return ['REPLACE-WITH-EDITOR-EMAIL@example.com']; }
 
-    // ---- EDIT THESE TWO THINGS ------------------------------------------
-    // Provider ID exactly as shown in Firebase console > Authentication > Sign-in method.
-    function oktaProviderId() { return 'saml.okta'; }
-    // Lowercase email addresses allowed to view branch data. Redeploy rules after changing.
-    function allowedEmails() { return ['REPLACE-WITH-ALLOWED-EMAIL@example.com']; }
-    // ----------------------------------------------------------------------
-
-    // Must be signed in through the Okta provider (not email/password, Google, etc. that
-    // other apps in this Firebase project might enable) AND be on the allowlist.
-    function isAllowed() {
+    function isViewer() {
       return request.auth != null
-        && request.auth.token.firebase.sign_in_provider == oktaProviderId()
+        && request.auth.token.firebase.sign_in_provider == oktaProviderId();
+    }
+    function isEditor() {
+      return isViewer()
         && 'email' in request.auth.token
-        && request.auth.token.email.lower() in allowedEmails();
+        && request.auth.token.email.lower() in editorEmails();
+    }
+    function validSite() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['address', 'address2', 'city', 'contacts', 'costCenter', 'description',
+                               'primary', 'region', 'secondary', 'siteName', 'state', 'status',
+                               'thirdOctet', 'users', 'zip', 'updatedBy', 'updatedAt'])
+        && d.siteName is string && d.siteName.size() > 0 && d.siteName.size() <= 200;
     }
 
     match /ccb_branch_info/{siteId} {
-      allow read: if isAllowed();
-      allow write: if false;   // data is loaded with the Admin SDK (scripts/import.mjs)
+      allow read: if isViewer();
+      allow create, update: if isEditor() && validSite();
+      allow delete: if false;
     }
-
     match /{document=**} {
       allow read, write: if false;
     }

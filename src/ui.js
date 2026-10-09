@@ -1,5 +1,6 @@
 // All rendering is done with DOM APIs and textContent. Spreadsheet data is never
 // inserted as HTML, so a cell containing markup cannot run script on the page.
+import { buildTable, toCsv, toXlsxBlob, download } from "./export.js";
 
 const el = (tag, attrs = {}, ...kids) => {
   const n = document.createElement(tag);
@@ -41,6 +42,29 @@ const ISP_FIELDS = [
   ["Modem serial", "modemSerial"],
   ["Notes", "notes"],
 ];
+
+const STATUSES = ["Original", "New", "DC", "Off Net", "Closed"];
+const SITE_FIELDS = [
+  ["Site name", "siteName", { required: true }],
+  ["Description", "description"],
+  ["Status", "status", { select: true }],
+  ["Region", "region"],
+  ["3rd octet", "thirdOctet"],
+  ["Cost center", "costCenter"],
+  ["Users", "users"],
+  ["Address", "address"],
+  ["Address 2", "address2"],
+  ["City", "city"],
+  ["State", "state"],
+  ["Zip", "zip"],
+];
+
+export const slugify = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "site";
+
+const fmtDate = (t) => {
+  const d = t && typeof t.toDate === "function" ? t.toDate() : null;
+  return d && !isNaN(d) ? d.toISOString().slice(0, 10) : "";
+};
 
 export function haystack(r) {
   const parts = [r.siteName, r.description, r.region, r.city, r.state, r.zip, r.address, r.thirdOctet, r.costCenter];
@@ -84,7 +108,7 @@ function ispBlock(title, isp) {
   return box;
 }
 
-function card(r) {
+function card(r, onEdit) {
   const body = el("div", { class: "detail", hidden: true });
   const addr = [r.address, r.address2].filter(Boolean).join(", ");
   const cityLine = [r.city, [r.state, r.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ");
@@ -106,6 +130,10 @@ function card(r) {
   } else contacts.append(el("p", { class: "muted" }, "None on record"));
 
   body.append(meta, el("div", { class: "cols" }, contacts, ispBlock("Primary ISP", r.primary), ispBlock("Secondary ISP", r.secondary)));
+  const when = fmtDate(r.updatedAt);
+  body.append(el("div", { class: "foot" },
+    el("span", { class: "muted" }, r.updatedBy ? `Last edited by ${r.updatedBy}${when ? " on " + when : ""}` : ""),
+    onEdit && el("button", { type: "button", class: "edit-btn", onclick: () => onEdit(r) }, "Edit")));
 
   const p = r.primary || {};
   const s = r.secondary || {};
@@ -136,8 +164,9 @@ export function createUI(root, handlers) {
 
   function renderList() {
     const rows = filterRows(state.active.concat(state.f.includeClosed ? state.closed : []), state.f).sort(byName);
+    state.shown = rows;
     countEl.textContent = `${rows.length} site${rows.length === 1 ? "" : "s"}`;
-    listEl.replaceChildren(...(rows.length ? rows.map(card) : [el("p", { class: "empty" }, "No sites match.")]));
+    listEl.replaceChildren(...(rows.length ? rows.map((r) => card(r, handlers.onSave ? openForm : null)) : [el("p", { class: "empty" }, "No sites match.")]));
   }
 
   function fillSelect(sel, label, values) {
@@ -151,6 +180,126 @@ export function createUI(root, handlers) {
     fillSelect(regionSel, "All regions", all.map((r) => r.region));
     fillSelect(stateSel, "All states", all.map((r) => r.state));
     fillSelect(statusSel, "Any status", all.filter((r) => state.f.includeClosed || r.status !== "Closed").map((r) => r.status));
+  }
+
+
+  // ---- add / edit form -------------------------------------------------------------------
+  function field(label, input) { return el("label", { class: "fld" }, el("span", {}, label), input); }
+
+  function textInput(name, value, opts = {}) {
+    return el(opts.area ? "textarea" : "input", Object.assign({ name, maxlength: opts.area ? 2000 : 200 }, opts.area ? { rows: 2 } : { type: "text" }, opts.required ? { required: true } : {}), ...(opts.area ? [value || ""] : []));
+  }
+
+  function openForm(row) {
+    const isNew = !row;
+    const r = row || {};
+    const dlg = el("dialog", { class: "modal", "aria-label": isNew ? "Add site" : "Edit site" });
+    const errBox = el("p", { class: "err", role: "alert" });
+    const form = el("form", { method: "dialog", class: "form" });
+
+    const statusSel = el("select", { name: "status" }, ...[...new Set([...STATUSES, ...state.active.concat(state.closed).map((x) => x.status), r.status].filter(Boolean))].map((v) => el("option", { value: v }, v)));
+    statusSel.value = r.status || "New";
+
+    const siteInputs = {};
+    const siteGrid = el("div", { class: "grid" });
+    for (const [label, key, o = {}] of SITE_FIELDS) {
+      const input = o.select ? statusSel : textInput(key, r[key] == null ? "" : String(r[key]), o);
+      if (!o.select) input.value = r[key] == null ? "" : String(r[key]);
+      siteInputs[key] = input;
+      siteGrid.append(field(label + (o.required ? " *" : ""), input));
+    }
+
+    // contacts (any number of rows)
+    const contactRows = el("div", { class: "contacts" });
+    const addContact = (c = {}) => {
+      const n = textInput("cname", c.name || ""), ph = textInput("cphone", c.phone || "");
+      n.value = c.name || ""; ph.value = c.phone || "";
+      n.placeholder = "Name"; ph.placeholder = "Phone";
+      const rm = el("button", { type: "button", class: "link", onclick: () => line.remove() }, "Remove");
+      const line = el("div", { class: "crow" }, n, ph, rm);
+      contactRows.append(line);
+    };
+    (r.contacts && r.contacts.length ? r.contacts : [{}]).forEach(addContact);
+
+    // ISP blocks
+    const ispInputs = { primary: {}, secondary: {} };
+    const ispSection = (key, title) => {
+      const old = r[key] || {};
+      const grid = el("div", { class: "grid" });
+      for (const [label, k] of ISP_FIELDS) {
+        const input = textInput(key + "_" + k, old[k] == null ? "" : String(old[k]), { area: k === "notes" });
+        input.value = old[k] == null ? "" : String(old[k]);
+        ispInputs[key][k] = input;
+        grid.append(field(label, input));
+      }
+      return el("fieldset", {}, el("legend", {}, title), grid);
+    };
+
+    const saveBtn = el("button", { type: "submit", class: "primary", value: "save" }, isNew ? "Add site" : "Save changes");
+    const cancel = el("button", { type: "button", onclick: () => dlg.close() }, "Cancel");
+
+    form.append(
+      el("h2", {}, isNew ? "Add site" : `Edit ${r.siteName || "site"}`),
+      el("fieldset", {}, el("legend", {}, "Site"), siteGrid),
+      el("fieldset", {}, el("legend", {}, "Contacts"), contactRows, el("button", { type: "button", class: "link", onclick: () => addContact() }, "+ Add contact")),
+      ispSection("primary", "Primary ISP"),
+      ispSection("secondary", "Secondary ISP"),
+      errBox,
+      el("div", { class: "actions" }, cancel, saveBtn));
+
+    form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      errBox.textContent = "";
+      const val = (i) => i.value.trim();
+      const next = Object.assign({}, r);
+      delete next.id; delete next._h; delete next.updatedAt; delete next.updatedBy;
+      for (const [, key] of SITE_FIELDS) { const v = val(siteInputs[key]); if (v) next[key] = v; else delete next[key]; }
+      if (!next.siteName) { errBox.textContent = "Site name is required."; return; }
+      next.contacts = [...contactRows.querySelectorAll(".crow")]
+        .map((l) => ({ name: val(l.querySelector("[name=cname]")), phone: val(l.querySelector("[name=cphone]")) }))
+        .filter((c) => c.name || c.phone);
+      if (!next.contacts.length) delete next.contacts;
+      for (const key of ["primary", "secondary"]) {
+        const isp = Object.assign({}, r[key] || {});
+        for (const [, k] of ISP_FIELDS) { const v = val(ispInputs[key][k]); if (v) isp[k] = v; else delete isp[k]; }
+        if (Object.keys(isp).length) next[key] = isp; else delete next[key];
+      }
+      saveBtn.disabled = true; saveBtn.textContent = "Saving…";
+      try {
+        const saved = await handlers.onSave({ id: isNew ? null : r.id, data: next, existingIds: state.active.concat(state.closed).map((x) => x.id) });
+        upsert(saved);
+        dlg.close();
+      } catch (e) {
+        errBox.textContent = e && e.code === "permission-denied"
+          ? "You don't have permission to make changes."
+          : `Couldn't save (${(e && (e.code || e.message)) || "unknown error"}).`;
+        saveBtn.disabled = false; saveBtn.textContent = isNew ? "Add site" : "Save changes";
+      }
+    });
+
+    dlg.append(form);
+    dlg.addEventListener("close", () => dlg.remove());
+    document.body.append(dlg);
+    dlg.showModal();
+    siteInputs.siteName.focus();
+  }
+
+  function upsert(saved) {
+    state.active = state.active.filter((x) => x.id !== saved.id);
+    state.closed = state.closed.filter((x) => x.id !== saved.id);
+    (saved.status === "Closed" ? state.closed : state.active).push(saved);
+    refreshFilters();
+    renderList();
+  }
+
+  // ---- export ----------------------------------------------------------------------------
+  async function exportRows(kind) {
+    const rows = state.shown || [];
+    const table = buildTable(rows);
+    const stamp = new Date().toISOString().slice(0, 10);
+    const name = `branch-isp-info-${stamp}`;
+    if (kind === "csv") download(new Blob([toCsv(table)], { type: "text/csv;charset=utf-8" }), name + ".csv");
+    else download(await toXlsxBlob(table), name + ".xlsx");
   }
 
   return {
@@ -209,11 +358,14 @@ export function createUI(root, handlers) {
         el("header", { class: "bar" },
           el("h1", {}, "Cornerstone CCB Branch ISP Info"),
           el("span", { class: "who-am-i" }, email),
+          handlers.onSave && el("button", { type: "button", id: "add", onclick: () => openForm(null) }, "Add site"),
           el("button", { type: "button", id: "logout", onclick: handlers.onLogout }, "Sign out")),
         el("div", { class: "filters" }, search, regionSel, stateSel, statusSel,
           el("label", {}, sec, " Has secondary ISP"),
           el("label", {}, closed, " Include closed sites"),
-          countEl, closedMsg),
+          countEl, closedMsg,
+          el("button", { type: "button", id: "export-xlsx", onclick: () => exportRows("xlsx") }, "Export Excel"),
+          el("button", { type: "button", id: "export-csv", onclick: () => exportRows("csv") }, "Export CSV")),
         el("div", { class: "colhead", "aria-hidden": "true" },
           el("span", {}, "Site"), el("span", {}, "Location"), el("span", {}, "Primary ISP"), el("span", {}, "Secondary ISP"), el("span", {}, "Contact"), el("span", {}, "Status")),
         listEl);
