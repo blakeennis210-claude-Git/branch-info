@@ -8,5 +8,5 @@ window.APP_CONFIG = {
   },
   databaseId: "(default)",
   collection: "ccb_branch_info",
-  providerId: "oidc.ccb-okta",
+  providerId: "oidc.branch-info",
 };
